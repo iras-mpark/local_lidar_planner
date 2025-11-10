@@ -22,7 +22,7 @@ from rclpy.duration import Duration
 from rclpy.time import Time
 from rclpy.node import Node
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 from nav_msgs.msg import Path
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
@@ -88,6 +88,7 @@ class SimpleLocalPlanner(Node):
         # Interfaces
         self.create_subscription(PointCloud2, self.scan_topic, self._scan_callback, 5)
         self.path_pub = self.create_publisher(Path, "/path", 10)
+        self.goal_pub = self.create_publisher(PointStamped, "/goal_preview", 5)
 
         self.timer = self.create_timer(1.0 / max(publish_rate_hz, 1e-3), self._on_timer)
         self.get_logger().info("Simple local planner ready (LiDAR-only, joystick-free).")
@@ -130,11 +131,13 @@ class SimpleLocalPlanner(Node):
 
         rel_goal = self._lookup_goal_in_vehicle()
         if rel_goal is None:
+            self._publish_goal_marker(0.0, 0.0, now)
             path.poses.append(self._pose_at(0.0, 0.0, 0.0, now))
             return path
 
         raw_distance = math.hypot(rel_goal[0], rel_goal[1])
         desired_heading = math.atan2(rel_goal[1], rel_goal[0])
+        self._publish_goal_marker(rel_goal[0], rel_goal[1], now)
 
         if raw_distance <= self.goal_offset:
             path.poses.append(self._pose_at(0.0, 0.0, desired_heading, now))
@@ -224,6 +227,14 @@ class SimpleLocalPlanner(Node):
         pose.pose.orientation.z = math.sin(heading / 2.0)
         pose.pose.orientation.w = math.cos(heading / 2.0)
         return pose
+
+    def _publish_goal_marker(self, x: float, y: float, stamp) -> None:
+        goal = PointStamped()
+        goal.header.stamp = stamp.to_msg()
+        goal.header.frame_id = self.path_frame
+        goal.point.x = x
+        goal.point.y = y
+        self.goal_pub.publish(goal)
 
     @staticmethod
     def _normalize_angle(angle: float) -> float:
