@@ -56,6 +56,7 @@ class SimpleLocalPlanner(Node):
         self.declare_parameter("goal_stale_timeout", 1.5)
         self.declare_parameter("goal_filter_process_std", 0.05)
         self.declare_parameter("goal_filter_measurement_std", 0.15)
+        self.declare_parameter("obstacle_topic", "/local_obstacles")
 
         self.path_frame: str = self.get_parameter("path_frame").get_parameter_value().string_value
         publish_rate_hz = self.get_parameter("publish_rate_hz").get_parameter_value().double_value
@@ -102,6 +103,8 @@ class SimpleLocalPlanner(Node):
         self.create_subscription(PointCloud2, self.scan_topic, self._scan_callback, 5)
         self.path_pub = self.create_publisher(Path, "/path", 10)
         self.goal_pub = self.create_publisher(PointStamped, "/goal_preview", 5)
+        obstacle_topic = self.get_parameter("obstacle_topic").get_parameter_value().string_value
+        self.obstacle_pub = self.create_publisher(PointCloud2, obstacle_topic, 5)
 
         self.timer = self.create_timer(1.0 / max(publish_rate_hz, 1e-3), self._on_timer)
         self.get_logger().info("Simple local planner ready (LiDAR-only, joystick-free).")
@@ -111,6 +114,7 @@ class SimpleLocalPlanner(Node):
         """Convert the incoming point cloud into a coarse polar histogram."""
         self.bin_ranges = [math.inf for _ in range(self.num_heading_bins)]
         had_points = False
+        obstacle_points: List[Tuple[float, float, float]] = []
 
         for point in point_cloud2.read_points(cloud, field_names=("x", "y", "z"), skip_nans=True):
             x, y, z = point
@@ -125,9 +129,16 @@ class SimpleLocalPlanner(Node):
             if distance < self.bin_ranges[idx]:
                 self.bin_ranges[idx] = distance
             had_points = True
+            obstacle_points.append((x, y, z))
 
         if had_points:
             self.last_scan_time = self.get_clock().now()
+        if obstacle_points:
+            obstacle_msg = point_cloud2.create_cloud_xyz32(cloud.header, obstacle_points)
+        else:
+            obstacle_msg = PointCloud2()
+            obstacle_msg.header = cloud.header
+        self.obstacle_pub.publish(obstacle_msg)
 
     # ------------------------------------------------------------------ Timer
     def _on_timer(self) -> None:
