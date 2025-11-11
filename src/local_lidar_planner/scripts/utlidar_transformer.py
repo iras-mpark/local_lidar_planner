@@ -35,7 +35,6 @@ class UTLidarTransformer(Node):
         self.declare_parameter("lidar_roll", 0.0)
         self.declare_parameter("lidar_pitch", 0.0)
         self.declare_parameter("lidar_yaw", 0.0)
-        self.declare_parameter("cam_offset", 0.046825)
 
         self.input_topic = self.get_parameter("input_topic").get_parameter_value().string_value
         self.output_topic = self.get_parameter("output_topic").get_parameter_value().string_value
@@ -46,7 +45,6 @@ class UTLidarTransformer(Node):
             self.get_parameter("lidar_y").get_parameter_value().double_value,
             self.get_parameter("lidar_z").get_parameter_value().double_value,
         )
-        self.cam_offset = self.get_parameter("cam_offset").get_parameter_value().double_value
         roll = self.get_parameter("lidar_roll").get_parameter_value().double_value
         pitch = self.get_parameter("lidar_pitch").get_parameter_value().double_value
         yaw = self.get_parameter("lidar_yaw").get_parameter_value().double_value
@@ -78,7 +76,7 @@ class UTLidarTransformer(Node):
             x, y, z, *rest = entry
             x_new = rot[0, 0] * x + rot[0, 1] * y + rot[0, 2] * z + tx
             y_new = rot[1, 0] * x + rot[1, 1] * y + rot[1, 2] * z + ty
-            z_new = rot[2, 0] * x + rot[2, 1] * y + rot[2, 2] * z + tz - self.cam_offset
+            z_new = rot[2, 0] * x + rot[2, 1] * y + rot[2, 2] * z + tz
             transformed_points.append((x_new, y_new, z_new, *rest))
 
         msg = point_cloud2.create_cloud(cloud.header, cloud.fields, transformed_points)
