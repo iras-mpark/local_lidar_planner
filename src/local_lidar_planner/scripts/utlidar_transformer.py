@@ -87,8 +87,8 @@ class UTLidarTransformer(Node):
         quat = quaternion_from_euler(roll, pitch, yaw)
         transform = TransformStamped()
         transform.header.stamp = self.get_clock().now().to_msg()
-        transform.header.frame_id = self.lidar_frame
-        transform.child_frame_id = self.target_frame
+        transform.header.frame_id = self.target_frame
+        transform.child_frame_id = self.lidar_frame
         transform.transform.translation.x = self.translation[0]
         transform.transform.translation.y = self.translation[1]
         transform.transform.translation.z = self.translation[2]
@@ -98,7 +98,7 @@ class UTLidarTransformer(Node):
         transform.transform.rotation.w = quat[3]
         self.tf_broadcaster.sendTransform(transform)
         self.get_logger().info(
-            f"Broadcasting static TF {self.lidar_frame} -> {self.target_frame} "
+            f"Broadcasting static TF {self.target_frame} -> {self.lidar_frame} "
             f"with translation=({self.translation[0]:.3f}, {self.translation[1]:.3f}, {self.translation[2]:.3f}) "
             f"and RPY=({roll:.3f}, {pitch:.3f}, {yaw:.3f})"
         )
