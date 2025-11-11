@@ -1,48 +1,52 @@
 <launch>
+  <arg name="path_frame" default="base_link"/>
+  <arg name="cmd_frame" default="base_link"/>
+  <arg name="max_speed" default="0.55"/>
+  <arg name="speed_gain" default="0.7"/>
+  <arg name="lookahead_distance" default="0.5"/>
+  <arg name="goal_tolerance" default="0.2"/>
+  <arg name="angular_gain" default="2.5"/>
+  <arg name="max_yaw_rate" default="1.2"/>
+  <arg name="safety_radius" default="0.45"/>
+  <arg name="max_path_length" default="4.0"/>
+  <arg name="goal_offset" default="1.0"/>
+  <arg name="publish_rate_hz" default="15.0"/>
+  <arg name="goal_tf_timeout" default="0.5"/>
+  <arg name="is_real_robot" default="true"/>
+  <arg name="scan_topic" default="/utlidar/cloud"/>
+  <arg name="goal_tf_frame" default="suitcase_frame"/>
+  <arg name="lidar_x" default="0.0"/>
+  <arg name="lidar_y" default="0.0"/>
+  <arg name="lidar_z" default="0.0"/>
+  <arg name="lidar_roll" default="0.0"/>
+  <arg name="lidar_pitch" default="0.0"/>
+  <arg name="lidar_yaw" default="0.0"/>
 
-  <arg name="sensorOffsetX" default="0.0"/>
-  <arg name="sensorOffsetY" default="0.0"/>
-  <arg name="cameraOffsetZ" default="0.0"/>
-  <arg name="twoWayDrive" default="true"/>
-  <arg name="maxSpeed" default="1.0"/>
-  <arg name="autonomyMode" default="true"/>
-  <arg name="autonomySpeed" default="0.5"/>
-  <arg name="joyToSpeedDelay" default="1.0"/>
-  <arg name="goalCloseDis" default="0.4"/>
-  <arg name="adjacentRange" default="3.0"/>
-  <arg name="is_real_robot" default="false"/>
-  <arg name="laserTopic" default="/utlidar/cloud"/>
-  <arg name="laserFixedFrame" default="base_link"/>
-
-  <node pkg="local_lidar_planner" exec="local_lidar_planner_node" name="local_lidar_planner" output="screen">
-    <param name="pathFolder" value="$(find-pkg-share local_lidar_planner)/paths" />
-    <param name="vehicleLength" value="0.3" />
-    <param name="vehicleWidth" value="0.7" />
-    <param name="sensorOffsetX" value="$(var sensorOffsetX)" />
-    <param name="sensorOffsetY" value="$(var sensorOffsetY)" />
-    <param name="cameraOffsetZ" value="$(var cameraOffsetZ)" />
-    <param name="twoWayDrive" value="$(var twoWayDrive)" />
-    <param name="maxSpeed" value="$(var maxSpeed)" />
-    <param name="autonomyMode" value="$(var autonomyMode)" />
-    <param name="autonomySpeed" value="$(var autonomySpeed)" />
-    <param name="joyToSpeedDelay" value="$(var joyToSpeedDelay)" />
-    <param name="goalCloseDis" value="$(var goalCloseDis)" />
-    <param name="adjacentRange" value="$(var adjacentRange)" />
-    <param name="useTerrainAnalysis" value="false" />
-    <param name="laserTopic" value="$(var laserTopic)" />
-    <param name="laserFixedFrame" value="$(var laserFixedFrame)" />
+  <node pkg="local_lidar_planner" exec="local_lidar_planner_simple.py" name="local_lidar_planner_simple" output="screen">
+    <param name="path_frame" value="$(var path_frame)"/>
+    <param name="max_path_length" value="$(var max_path_length)"/>
+    <param name="publish_rate_hz" value="$(var publish_rate_hz)"/>
+    <param name="safety_radius" value="$(var safety_radius)"/>
+    <param name="scan_topic" value="$(var scan_topic)"/>
+    <param name="goal_tf_frame" value="$(var goal_tf_frame)"/>
+    <param name="goal_offset" value="$(var goal_offset)"/>
+    <param name="goal_tf_timeout" value="$(var goal_tf_timeout)"/>
   </node>
 
-  <node pkg="local_lidar_planner" exec="path_follower_node" name="path_follower" output="screen">
-    <param name="sensorOffsetX" value="$(var sensorOffsetX)" />
-    <param name="sensorOffsetY" value="$(var sensorOffsetY)" />
-    <param name="twoWayDrive" value="$(var twoWayDrive)" />
-    <param name="maxSpeed" value="$(var maxSpeed)" />
-    <param name="autonomyMode" value="$(var autonomyMode)" />
-    <param name="autonomySpeed" value="$(var autonomySpeed)" />
-    <param name="joyToSpeedDelay" value="$(var joyToSpeedDelay)" />
-    <param name="goalCloseDis" value="$(var goalCloseDis)" />
-    <param name="is_real_robot" value="$(var is_real_robot)" />
+  <node pkg="local_lidar_planner" exec="path_follower_simple.py" name="path_follower_simple" output="screen">
+    <param name="path_frame" value="$(var path_frame)"/>
+    <param name="cmd_frame" value="$(var cmd_frame)"/>
+    <param name="max_speed" value="$(var max_speed)"/>
+    <param name="speed_gain" value="$(var speed_gain)"/>
+    <param name="lookahead_distance" value="$(var lookahead_distance)"/>
+    <param name="goal_tolerance" value="$(var goal_tolerance)"/>
+    <param name="angular_gain" value="$(var angular_gain)"/>
+    <param name="max_yaw_rate" value="$(var max_yaw_rate)"/>
+    <param name="is_real_robot" value="$(var is_real_robot)"/>
   </node>
 
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="utlidar_to_base_link"
+        args="0 0 0 0 0 0 utlidar_lidar base_link"/>
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="utlidar_to_base_link"
+        args="$(var lidar_x) $(var lidar_y) $(var lidar_z) $(var lidar_roll) $(var lidar_pitch) $(var lidar_yaw) utlidar_lidar $(var path_frame)"/>
 </launch>
