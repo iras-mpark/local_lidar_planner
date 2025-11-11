@@ -133,11 +133,14 @@ class SimpleLocalPlanner(Node):
 
         if had_points:
             self.last_scan_time = self.get_clock().now()
+        obstacle_header = cloud.header
+        obstacle_header.frame_id = self.path_frame
         if obstacle_points:
-            obstacle_msg = point_cloud2.create_cloud_xyz32(cloud.header, obstacle_points)
+            obstacle_msg = point_cloud2.create_cloud_xyz32(obstacle_header, obstacle_points)
         else:
             obstacle_msg = PointCloud2()
-            obstacle_msg.header = cloud.header
+            obstacle_msg.header = obstacle_header
+        obstacle_msg.header.stamp = self.get_clock().now().to_msg()
         self.obstacle_pub.publish(obstacle_msg)
 
     # ------------------------------------------------------------------ Timer
