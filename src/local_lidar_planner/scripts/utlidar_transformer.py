@@ -13,9 +13,11 @@ from typing import List, Tuple
 
 import rclpy
 from rclpy.node import Node
+from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
-from tf_transformations import euler_matrix
+from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
+from tf_transformations import euler_matrix, quaternion_from_euler
 
 
 class UTLidarTransformer(Node):
@@ -26,6 +28,7 @@ class UTLidarTransformer(Node):
         self.declare_parameter("input_topic", "/utlidar/cloud")
         self.declare_parameter("output_topic", "/utlidar/transformed_cloud")
         self.declare_parameter("target_frame", "base_link")
+        self.declare_parameter("lidar_frame", "utlidar_lidar")
         self.declare_parameter("lidar_x", 0.0)
         self.declare_parameter("lidar_y", 0.0)
         self.declare_parameter("lidar_z", 0.0)
@@ -37,6 +40,7 @@ class UTLidarTransformer(Node):
         self.input_topic = self.get_parameter("input_topic").get_parameter_value().string_value
         self.output_topic = self.get_parameter("output_topic").get_parameter_value().string_value
         self.target_frame = self.get_parameter("target_frame").get_parameter_value().string_value
+        self.lidar_frame = self.get_parameter("lidar_frame").get_parameter_value().string_value
         self.translation = (
             self.get_parameter("lidar_x").get_parameter_value().double_value,
             self.get_parameter("lidar_y").get_parameter_value().double_value,
@@ -52,6 +56,8 @@ class UTLidarTransformer(Node):
         self.subscription = self.create_subscription(
             PointCloud2, self.input_topic, self._cloud_callback, 10
         )
+        self.tf_broadcaster = StaticTransformBroadcaster(self)
+        self._broadcast_static_tf(roll, pitch, yaw)
 
         self.get_logger().info(
             f"UTLiDAR transformer publishing {self.input_topic} -> {self.output_topic} "
@@ -78,6 +84,27 @@ class UTLidarTransformer(Node):
         msg = point_cloud2.create_cloud(cloud.header, cloud.fields, transformed_points)
         msg.header.frame_id = self.target_frame
         self.publisher.publish(msg)
+
+    def _broadcast_static_tf(self, roll: float, pitch: float, yaw: float) -> None:
+        quat = quaternion_from_euler(roll, pitch, yaw)
+        transform = TransformStamped()
+        transform.header.stamp = self.get_clock().now().to_msg()
+        transform.header.frame_id = self.lidar_frame
+        transform.child_frame_id = self.target_frame
+        transform.transform.translation.x = self.translation[0]
+        transform.transform.translation.y = self.translation[1]
+        transform.transform.translation.z = self.translation[2]
+        transform.transform.rotation.x = quat[0]
+        transform.transform.rotation.y = quat[1]
+        transform.transform.rotation.z = quat[2]
+        transform.transform.rotation.w = quat[3]
+        self.tf_broadcaster.sendTransform(transform)
+        self.get_logger().info(
+            f"Broadcasting static TF {self.lidar_frame} -> {self.target_frame} "
+            f"with translation=({self.translation[0]:.3f}, {self.translation[1]:.3f}, {self.translation[2]:.3f}) "
+            f"and RPY=({roll:.3f}, {pitch:.3f}, {yaw:.3f})"
+        )
+
 
 
 def main() -> None:

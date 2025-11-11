@@ -10,7 +10,6 @@ endif()
 install(PROGRAMS
   scripts/local_lidar_planner_simple.py
   scripts/path_follower_simple.py
-  scripts/utlidar_tf_broadcaster.py
   scripts/utlidar_transformer.py
   DESTINATION lib/${PROJECT_NAME})
 
