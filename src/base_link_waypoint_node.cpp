@@ -6,7 +6,7 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
@@ -56,41 +56,48 @@ private:
     static_broadcaster_->sendTransform(tf);
   }
 
+  geometry_msgs::msg::PointStamped make_hold_waypoint()
+  {
+    geometry_msgs::msg::PointStamped hold;
+    hold.header.frame_id = base_frame_;
+    hold.header.stamp = this->get_clock()->now();
+    hold.point.x = 0.0;
+    hold.point.y = 0.0;
+    hold.point.z = 0.0;
+    return hold;
+  }
+
   void timer_cb()
   {
-    geometry_msgs::msg::TransformStamped base_to_target;
-    geometry_msgs::msg::PointStamped waypoint_in_base;
+    geometry_msgs::msg::PointStamped waypoint_in_base = make_hold_waypoint();
     geometry_msgs::msg::PointStamped waypoint_in_global;
 
     try {
-      base_to_target = tf_buffer_.lookupTransform(
+      const auto base_to_target = tf_buffer_.lookupTransform(
         base_frame_, target_frame_, tf2::TimePointZero);
+      const double dx = base_to_target.transform.translation.x;
+      const double dy = base_to_target.transform.translation.y;
+      const double dist_xy = std::hypot(dx, dy);
+
+      if (dist_xy <= stop_distance_) {
+        arrived_ = true;
+        waypoint_in_base.point.x = 0.0;
+        waypoint_in_base.point.y = 0.0;
+        waypoint_in_base.point.z = 0.0;
+      } else {
+        arrived_ = false;
+        const double desired = dist_xy - stop_distance_;
+        const double scale = desired / dist_xy;
+        waypoint_in_base.point.x = dx * scale;
+        waypoint_in_base.point.y = dy * scale;
+        waypoint_in_base.point.z = 0.0;
+      }
     } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000, "Failed to lookup %s -> %s: %s",
-        base_frame_.c_str(), target_frame_.c_str(), ex.what());
-      return;
-    }
-
-    const double dx = base_to_target.transform.translation.x;
-    const double dy = base_to_target.transform.translation.y;
-    const double dist_xy = std::hypot(dx, dy);
-
-    waypoint_in_base.header.frame_id = base_frame_;
-    waypoint_in_base.header.stamp = this->get_clock()->now();
-
-    if (dist_xy <= stop_distance_) {
-      arrived_ = true;
-      waypoint_in_base.point.x = 0.0;
-      waypoint_in_base.point.y = 0.0;
-      waypoint_in_base.point.z = 0.0;
-    } else {
       arrived_ = false;
-      const double desired = dist_xy - stop_distance_;
-      const double scale = desired / dist_xy;
-      waypoint_in_base.point.x = dx * scale;
-      waypoint_in_base.point.y = dy * scale;
-      waypoint_in_base.point.z = 0.0;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Failed to lookup %s -> %s: %s. Publishing hold waypoint on %s.",
+        base_frame_.c_str(), target_frame_.c_str(), ex.what(), waypoint_topic_.c_str());
     }
 
     try {
