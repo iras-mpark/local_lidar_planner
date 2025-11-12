@@ -48,7 +48,7 @@ def generate_launch_description() -> LaunchDescription:
         declare_arg(
             "target_timeout",
             "0.5",
-            "Max time (s) the target TF can stay unchanged before the robot holds position (-1 disables).",
+            "Warn if the target TF timestamp is older than this many seconds (-1 disables).",
         ),
         declare_arg("use_sim_time", "false", "Toggle ROS time usage."),
         node,
