@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Lightweight LiDAR-only local planner.
 
-The node voxelizes the latest scan into a local occupancy grid, inflates
-obstacles by the configured safety radius, and runs an A* search toward the
-goal expressed in `path_frame`. The resulting path is published as a short plan
-plus visualizers (`/goal_preview`, `/goal_raw`, `/local_obstacles`) so it can
-run standalone in minimal deployments.
+Each scan is voxelized into a local occupancy grid, obstacles are inflated
+by the configured safety radius, and an A* search produces a short collision-
+free path toward the goal expressed in `path_frame`. The resulting plan plus
+visual aids (`/goal_preview`, `/goal_raw`, `/local_obstacles`) make it easy to
+debug in RViz while remaining standalone.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from rclpy.time import Time
 from rclpy.node import Node
 
 from geometry_msgs.msg import PointStamped, PoseStamped
-from nav_msgs.msg import Path
+from nav_msgs.msg import OccupancyGrid, Path
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -85,6 +85,8 @@ class SimpleLocalPlanner(Node):
         self.goal_raw_pub = self.create_publisher(PointStamped, "/goal_raw", 5)
         obstacle_topic = self.get_parameter("obstacle_topic").get_parameter_value().string_value
         self.obstacle_pub = self.create_publisher(PointCloud2, obstacle_topic, 5)
+        self.grid_pub = self.create_publisher(OccupancyGrid, "/local_obstacles_grid", 5)
+        self.potential_pub = self.create_publisher(OccupancyGrid, "/local_potential_grid", 5)
 
         self.timer = self.create_timer(1.0 / max(publish_rate_hz, 1e-3), self._on_timer)
         self.get_logger().info("Simple local planner ready (LiDAR-only, joystick-free).")
@@ -104,13 +106,10 @@ class SimpleLocalPlanner(Node):
             if distance < 1e-3 or distance > self.max_considered_range:
                 continue
             heading = math.atan2(y, x)
-            idx = self._heading_to_index(heading)
-            if distance < self.bin_ranges[idx]:
-                self.bin_ranges[idx] = distance
-            had_points = True
             obstacle_points.append((x, y, z))
             xy_points.append((x, y))
 
+        now_msg = self.get_clock().now().to_msg()
         obstacle_header = cloud.header
         obstacle_header.frame_id = self.path_frame
         if obstacle_points:
@@ -118,8 +117,10 @@ class SimpleLocalPlanner(Node):
         else:
             obstacle_msg = PointCloud2()
             obstacle_msg.header = obstacle_header
-        obstacle_msg.header.stamp = self.get_clock().now().to_msg()
+        obstacle_msg.header.stamp = now_msg
         self.obstacle_pub.publish(obstacle_msg)
+        self.grid_pub.publish(self._build_grid_map(xy_points, inflated=False, stamp=now_msg))
+        self.potential_pub.publish(self._build_grid_map(xy_points, inflated=True, stamp=now_msg))
         self.latest_obstacles = xy_points
 
     # ------------------------------------------------------------------ Timer
@@ -137,8 +138,8 @@ class SimpleLocalPlanner(Node):
 
         rel_goal = self._lookup_goal_in_vehicle(now)
         if rel_goal is None:
-            path.poses.append(self._pose_at(0.0, 0.0, 0.0, now))
             self._publish_goal_marker(0.0, 0.0, now)
+            path.poses.append(self._pose_at(0.0, 0.0, 0.0, now))
             return path
 
         raw_distance = math.hypot(rel_goal[0], rel_goal[1])
@@ -155,6 +156,7 @@ class SimpleLocalPlanner(Node):
             path.poses.append(self._pose_at(0.0, 0.0, desired_heading, now))
             self._publish_goal_marker(0.0, 0.0, now)
             return path
+
         max_travel = self.max_path_length
         if self.max_considered_range > 0:
             max_travel = min(self.max_path_length, self.max_considered_range)
@@ -164,7 +166,6 @@ class SimpleLocalPlanner(Node):
             scale = max_travel / goal_distance
             goal_distance = max_travel
             rel_goal = (rel_goal[0] * scale, rel_goal[1] * scale)
-            desired_heading = math.atan2(rel_goal[1], rel_goal[0])
 
         path_points = self._plan_path_astar(rel_goal[0], rel_goal[1])
         if not path_points:
@@ -215,10 +216,7 @@ class SimpleLocalPlanner(Node):
             return occupancy
 
         max_cells = self.grid_radius_cells
-        for x, y in self.latest_obstacles:
-            if math.hypot(x, y) > self.max_considered_range:
-                continue
-            cell = self._world_to_cell(x, y)
+        for cell in self._cells_from_points(self.latest_obstacles):
             for dx in range(-self.inflation_cells, self.inflation_cells + 1):
                 for dy in range(-self.inflation_cells, self.inflation_cells + 1):
                     if dx * dx + dy * dy > self.inflation_cells * self.inflation_cells:
@@ -295,7 +293,11 @@ class SimpleLocalPlanner(Node):
             current = came_from[current]
             cells.append(current)
         cells.reverse()
-        return [self._cell_to_world(cell) for cell in cells]
+        points = [self._cell_to_world(cell) for cell in cells]
+        # drop the duplicated start point to avoid zero-length segment
+        if len(points) > 1 and math.hypot(points[1][0], points[1][1]) < 1e-6:
+            points = points[1:]
+        return points
 
     def _find_nearest_free(
         self, start_cell: Tuple[int, int], occupancy: Set[Tuple[int, int]]
@@ -324,6 +326,57 @@ class SimpleLocalPlanner(Node):
 
     def _cell_to_world(self, cell: Tuple[int, int]) -> Tuple[float, float]:
         return (cell[0] * self.grid_resolution, cell[1] * self.grid_resolution)
+
+    def _cells_from_points(self, points: List[Tuple[float, float]]) -> List[Tuple[int, int]]:
+        cells: List[Tuple[int, int]] = []
+        max_range = self.max_considered_range
+        for x, y in points:
+            if math.hypot(x, y) > max_range:
+                continue
+            cells.append(self._world_to_cell(x, y))
+        return cells
+
+    def _build_grid_map(self, points: List[Tuple[float, float]], inflated: bool, stamp) -> OccupancyGrid:
+        grid = OccupancyGrid()
+        grid.header.stamp = stamp
+        grid.header.frame_id = self.path_frame
+        grid.info.resolution = self.grid_resolution
+        width = height = self.grid_radius_cells * 2 + 1
+        grid.info.width = width
+        grid.info.height = height
+        grid.info.origin.position.x = -self.grid_radius_cells * self.grid_resolution
+        grid.info.origin.position.y = -self.grid_radius_cells * self.grid_resolution
+        grid.info.origin.orientation.w = 1.0
+
+        total_cells = width * height
+        data = [-1] * total_cells
+
+        cells = set(self._cells_from_points(points))
+        if inflated and self.inflation_cells > 0:
+            inflated_cells: Set[Tuple[int, int]] = set()
+            max_cells = self.grid_radius_cells
+            for cell in cells:
+                for dx in range(-self.inflation_cells, self.inflation_cells + 1):
+                    for dy in range(-self.inflation_cells, self.inflation_cells + 1):
+                        if dx * dx + dy * dy > self.inflation_cells * self.inflation_cells:
+                            continue
+                        occ = (cell[0] + dx, cell[1] + dy)
+                        if abs(occ[0]) <= max_cells and abs(occ[1]) <= max_cells:
+                            inflated_cells.add(occ)
+            cells = inflated_cells
+
+        for cell in cells:
+            idx = self._cell_to_grid_index(cell, width)
+            if 0 <= idx < total_cells:
+                data[idx] = 100 if inflated else 75
+
+        grid.data = data
+        return grid
+
+    def _cell_to_grid_index(self, cell: Tuple[int, int], width: int) -> int:
+        x_idx = cell[0] + self.grid_radius_cells
+        y_idx = cell[1] + self.grid_radius_cells
+        return y_idx * width + x_idx
 
     def _pose_at(self, x: float, y: float, heading: float, stamp) -> PoseStamped:
         pose = PoseStamped()
