@@ -52,9 +52,6 @@ class SimpleLocalPlanner(Node):
         self.declare_parameter("scan_topic", "/utlidar/cloud")
         self.declare_parameter("goal_tf_frame", "")
         self.declare_parameter("goal_tf_timeout", 0.5)
-        self.declare_parameter("goal_stale_timeout", 1.5)
-        self.declare_parameter("goal_filter_process_std", 0.05)
-        self.declare_parameter("goal_filter_measurement_std", 0.15)
         self.declare_parameter("obstacle_topic", "/local_obstacles")
 
         self.path_frame: str = self.get_parameter("path_frame").get_parameter_value().string_value
@@ -79,16 +76,6 @@ class SimpleLocalPlanner(Node):
         if not self.goal_tf_frame:
             raise ValueError("goal_tf_frame parameter must be set (e.g., 'suitcase_frame').")
         self.goal_tf_timeout = self.get_parameter("goal_tf_timeout").get_parameter_value().double_value
-        self.goal_stale_timeout = self.get_parameter("goal_stale_timeout").get_parameter_value().double_value
-        process_std = self.get_parameter("goal_filter_process_std").get_parameter_value().double_value
-        meas_std = self.get_parameter("goal_filter_measurement_std").get_parameter_value().double_value
-        self.goal_process_var = max(1e-6, process_std * process_std)
-        self.goal_measurement_var = max(1e-6, meas_std * meas_std)
-        self.goal_state: Optional[List[float]] = None
-        self.goal_var: Optional[List[float]] = None
-        self.goal_last_measurement: Optional[Time] = None
-        self.goal_last_filter_update = self.get_clock().now()
-        self._goal_stale_warned = False
 
         self.bin_ranges: List[float] = [math.inf for _ in range(self.num_heading_bins)]
         self.last_scan_time = self.get_clock().now()
@@ -155,7 +142,7 @@ class SimpleLocalPlanner(Node):
         path.header.stamp = now.to_msg()
         path.header.frame_id = self.path_frame
 
-        rel_goal = self._get_filtered_goal(now)
+        rel_goal = self._lookup_goal_in_vehicle()
         if rel_goal is None:
             self._publish_goal_marker(0.0, 0.0, now)
             path.poses.append(self._pose_at(0.0, 0.0, 0.0, now))
@@ -209,47 +196,6 @@ class SimpleLocalPlanner(Node):
                 self.get_logger().warn(f"TF lookup failed ({self.goal_tf_frame}): {exc}")
                 self._last_tf_warn_time = now_sec
             return None
-
-    def _get_filtered_goal(self, now: Time) -> Optional[Tuple[float, float]]:
-        """Return a smoothed goal using a simple constant-position Kalman filter."""
-        dt = (now.nanoseconds - self.goal_last_filter_update.nanoseconds) / 1e9
-        dt = max(dt, 0.0)
-        self.goal_last_filter_update = now
-
-        if self.goal_state is not None and self.goal_var is not None:
-            process_var = self.goal_process_var * max(dt, 1e-3)
-            self.goal_var[0] += process_var
-            self.goal_var[1] += process_var
-
-        measurement = self._lookup_goal_in_vehicle()
-        if measurement is not None:
-            if self.goal_state is None:
-                self.goal_state = [measurement[0], measurement[1]]
-                self.goal_var = [self.goal_measurement_var, self.goal_measurement_var]
-            else:
-                for idx in range(2):
-                    var = self.goal_var[idx]
-                    meas_var = self.goal_measurement_var
-                    kalman_gain = var / (var + meas_var)
-                    self.goal_state[idx] = self.goal_state[idx] + kalman_gain * (
-                        measurement[idx] - self.goal_state[idx]
-                    )
-                    self.goal_var[idx] = (1.0 - kalman_gain) * var
-            self.goal_last_measurement = now
-            self._goal_stale_warned = False
-
-        if self.goal_state is None or self.goal_last_measurement is None:
-            return None
-
-        time_since_meas = (now.nanoseconds - self.goal_last_measurement.nanoseconds) / 1e9
-        if time_since_meas > self.goal_stale_timeout:
-            if not self._goal_stale_warned:
-                self.get_logger().warn(
-                    f"No goal TF received for {time_since_meas:.1f}s; stopping until '{self.goal_tf_frame}' reappears."
-                )
-                self._goal_stale_warned = True
-            return None
-        return self.goal_state[0], self.goal_state[1]
 
     def _select_heading(self, desired: float) -> Optional[float]:
         if self._is_heading_clear(desired):
