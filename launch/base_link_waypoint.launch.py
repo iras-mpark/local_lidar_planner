@@ -16,6 +16,7 @@ def generate_launch_description() -> LaunchDescription:
     waypoint_topic = LaunchConfiguration("waypoint_topic")
     publish_period = LaunchConfiguration("publish_period")
     stop_distance = LaunchConfiguration("stop_distance")
+    target_timeout = LaunchConfiguration("target_timeout")
     use_sim_time = LaunchConfiguration("use_sim_time")
 
     node = Node(
@@ -31,6 +32,7 @@ def generate_launch_description() -> LaunchDescription:
             "waypoint_topic": waypoint_topic,
             "publish_period": publish_period,
             "stop_distance": stop_distance,
+            "target_timeout": target_timeout,
             "use_sim_time": use_sim_time,
         }],
     )
@@ -43,6 +45,7 @@ def generate_launch_description() -> LaunchDescription:
         declare_arg("waypoint_topic", "/way_point", "Topic for waypoint publishing."),
         declare_arg("publish_period", "0.2", "Timer period (seconds) between publishes."),
         declare_arg("stop_distance", "1.0", "Desired stand-off distance (meters)."),
+        declare_arg("target_timeout", "0.5", "Warn if TF is older than this many seconds (-1 disables)."),
         declare_arg("use_sim_time", "false", "Toggle ROS time usage."),
         node,
     ])

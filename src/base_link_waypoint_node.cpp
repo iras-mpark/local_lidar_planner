@@ -93,14 +93,16 @@ private:
       const auto stamp = rclcpp::Time(base_to_target.header.stamp);
       const bool stamp_valid = stamp.nanoseconds() > 0;
       const double age = stamp_valid ? (now - stamp).seconds() : 0.0;
+      const bool target_stale = target_timeout_ > 0.0 && stamp_valid && age > target_timeout_;
 
-      if (target_timeout_ > 0.0 && stamp_valid && age > target_timeout_) {
-        arrived_ = false;
+      if (target_stale) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Transform %s -> %s is stale (%.2fs > %.2fs). Publishing hold waypoint on %s.",
-          base_frame_.c_str(), target_frame_.c_str(), age, target_timeout_, waypoint_topic_.c_str());
-      } else if (dist_xy <= stop_distance_) {
+          "Transform %s -> %s is stale (%.2fs > %.2fs) but using it for waypoint generation.",
+          base_frame_.c_str(), target_frame_.c_str(), age, target_timeout_);
+      }
+
+      if (dist_xy <= stop_distance_) {
         arrived_ = true;
         waypoint_in_base.point.x = 0.0;
         waypoint_in_base.point.y = 0.0;
