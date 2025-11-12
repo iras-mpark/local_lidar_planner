@@ -6,7 +6,13 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#elif __has_include(<tf2_geometry_msgs/tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#else
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#endif
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
