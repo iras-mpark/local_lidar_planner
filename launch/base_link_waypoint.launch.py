@@ -43,6 +43,6 @@ def generate_launch_description() -> LaunchDescription:
         declare_arg("waypoint_topic", "/way_point", "Topic for waypoint publishing."),
         declare_arg("publish_period", "0.2", "Timer period (seconds) between publishes."),
         declare_arg("stop_distance", "1.0", "Desired stand-off distance (meters)."),
-        declare_arg("use_sim_time", "true", "Toggle ROS time usage."),
+        declare_arg("use_sim_time", "false", "Toggle ROS time usage."),
         node,
     ])

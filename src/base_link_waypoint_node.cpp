@@ -159,11 +159,10 @@ private:
   void declare_sim_time()
   {
     try {
-      this->declare_parameter<bool>("use_sim_time", true);
+      this->declare_parameter<bool>("use_sim_time", false);
     } catch (const rclcpp::exceptions::ParameterAlreadyDeclaredException &) {
-      // Parameter already declared elsewhere.
+      // Parameter already declared elsewhere; respect the existing value.
     }
-    this->set_parameter(rclcpp::Parameter("use_sim_time", true));
   }
 };
 
