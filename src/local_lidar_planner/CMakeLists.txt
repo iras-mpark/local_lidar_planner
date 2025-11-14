@@ -8,6 +8,7 @@ if(DEFINED CATKIN_INSTALL_INTO_PREFIX_ROOT)
 endif()
 
 install(PROGRAMS
+  scripts/lidar_accumulator.py
   scripts/local_lidar_planner_simple.py
   scripts/path_follower_simple.py
   scripts/utlidar_transformer.py

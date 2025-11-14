@@ -15,11 +15,15 @@
   <arg name="is_real_robot" default="true"/>
   <arg name="scan_topic" default="/utlidar/cloud"/>
   <arg name="transformed_scan_topic" default="/utlidar/transformed_cloud"/>
+  <arg name="accumulated_scan_topic" default="/utlidar/accumulated_cloud"/>
   <arg name="goal_tf_frame" default="suitcase_frame"/>
   <arg name="obstacle_z_min" default="-0.0"/>
   <arg name="obstacle_z_max" default="1.0"/>
   <arg name="grid_resolution" default="0.2"/>
   <arg name="max_considered_range" default="4.0"/>
+  <arg name="accumulator_history" default="0.8"/>
+  <arg name="accumulator_publish_rate" default="15.0"/>
+  <arg name="accumulator_max_clouds" default="10"/>
   <arg name="lidar_frame" default="utlidar_lidar"/>
   <arg name="lidar_x" default="0.0"/>
   <arg name="lidar_y" default="0.0"/>
@@ -41,12 +45,20 @@
     <param name="lidar_yaw" value="$(var lidar_yaw)"/>
   </node>
 
+  <node pkg="local_lidar_planner" exec="lidar_accumulator.py" name="lidar_accumulator" output="screen">
+    <param name="input_topic" value="$(var transformed_scan_topic)"/>
+    <param name="output_topic" value="$(var accumulated_scan_topic)"/>
+    <param name="history_duration" value="$(var accumulator_history)"/>
+    <param name="publish_rate_hz" value="$(var accumulator_publish_rate)"/>
+    <param name="max_clouds" value="$(var accumulator_max_clouds)"/>
+  </node>
+
   <node pkg="local_lidar_planner" exec="local_lidar_planner_simple.py" name="local_lidar_planner_simple" output="screen">
     <param name="path_frame" value="$(var path_frame)"/>
     <param name="max_path_length" value="$(var max_path_length)"/>
     <param name="publish_rate_hz" value="$(var publish_rate_hz)"/>
     <param name="safety_radius" value="$(var safety_radius)"/>
-    <param name="scan_topic" value="$(var transformed_scan_topic)"/>
+    <param name="scan_topic" value="$(var accumulated_scan_topic)"/>
     <param name="goal_tf_frame" value="$(var goal_tf_frame)"/>
     <param name="goal_offset" value="$(var goal_offset)"/>
     <param name="goal_tf_timeout" value="$(var goal_tf_timeout)"/>
